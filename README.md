@@ -2,7 +2,7 @@
 
 Built for DurHack, P&G Challenge 1: innovating with complex receipt data for consumer and business insights.
 
-Supermarket receipts are messy: truncated product names, OCR errors, missing context. This project cleans them, stores them in TigerData, and turns them into actions a P&G category team could take. A new CSV dropped into the dashboard updates every chart, and Gemini turns the computed numbers into three prioritised recommendations.
+Supermarket receipts are messy: truncated product names, OCR errors, missing context. This project cleans them, stores them in TigerData, and turns them into actions a P&G category team could take with Gemini API. A new CSV can be dropped into the dashboard to update every chart, and Gemini turns the computed numbers into three prioritised recommendations.
 
 ## What it does
 
@@ -92,22 +92,13 @@ Python, pandas, Streamlit, Plotly, TigerData, Gemini API (`google-genai`).
 6. **Run the dashboard:**
 
    ```
-   python -m streamlit run app.py
+   python -m streamlit run app_v2.py
    ```
 
 ## Running without a database
 
 Set `CSV_MODE=1` in `.env` and keep the receipt CSV in the project folder (override the file name with `CSV_FILE`). The dashboard then reads the CSV directly. Uploads and the weekly view refresh are switched off in this mode. It is useful as a demo fallback.
 
-## Try the live update
-
-`make_synthetic.py` generates a fresh batch in the same format as the original data:
-
-```
-python make_synthetic.py 2026-10-01 2026-10-31 october.csv
-```
-
-Upload the result in the dashboard sidebar and click **Process upload**. New receipts are added, duplicates are skipped, and the charts update.
 
 ## How the numbers are defined
 
