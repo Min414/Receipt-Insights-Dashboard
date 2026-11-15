@@ -7,7 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 import metrics
-from cleaning import clean_frame
+from cleaning import clean_frame, clean_promotion
 
 load_dotenv(override=True)
 st.set_page_config(page_title="Receipt insights for P&G", layout="wide")
@@ -24,7 +24,7 @@ RUST = "#8F3B22"   # leakage
 SAND = "#F0EEE6"    # sidebar and quiet surfaces
 LINE = "#E3E0D4"    # rules and gridlines
 CREAM = "#FAF9F5"   # page background
-MUTED = "#5E5D59"   # secondary text
+MUTED = "#4B4A46"   # secondary text
 
 COLS = ["ts", "consumer_id", "receipt_id", "line_number", "store_name", "product_raw", "product",
         "brand", "category", "is_pg", "quantity", "unit_price", "line_total", "promotion",
@@ -62,6 +62,11 @@ button[data-baseweb="tab"][aria-selected="true"], button[data-baseweb="tab"][ari
 [data-testid="stTab"][aria-selected="true"], [data-testid="stTab"][aria-selected="true"] p {{ color: {CLAY} !important; }}
 [data-testid="stTab"] .react-aria-SelectionIndicator {{ background-color: {CLAY} !important; }}
 [data-testid="stToolbar"] {{ display: none; }}
+[data-testid="stFileUploaderDropzone"] {{ background: #E9E5D8 !important; border: 1px dashed #B5B1A3 !important; }}
+[data-testid="stFileUploaderDropzone"], [data-testid="stFileUploaderDropzone"] * {{ color: {INK} !important; }}
+[data-baseweb="select"] > div {{ background: #FFFFFF !important; border: 1px solid #C9C5B8 !important; }}
+[data-baseweb="select"] * {{ color: {INK} !important; }}
+[data-testid="stFileUploaderDropzone"] button {{ background: #FFFFFF !important; border: 1px solid #B5B1A3 !important; }}
 [data-testid="stAlert"], [data-testid="stAlertContainer"], div[role="alert"] {{ background: #E9E5D8 !important; color: {INK} !important; border-radius: 6px; }}
 [data-testid="stBaseButton-primary"], button[kind="primary"] {{ background: {CLAY}; border: 0;
     border-radius: 6px; }}
@@ -99,6 +104,7 @@ def load_receipts():
                "category, is_pg, quantity, unit_price, line_total, promotion FROM receipts")
     for c in ["unit_price", "line_total"]:
         df[c] = df[c].astype(float)
+    df["promotion"] = clean_promotion(df["promotion"])
     return df
 
 
@@ -167,8 +173,9 @@ def ask_gemini(facts):
         "You advise a P&G category team using supermarket receipt data. Use ONLY the numbers in "
         "the JSON below. Do not invent figures. Give exactly three prioritised actions. For each: "
         "the action, the evidence (quote the exact numbers), the expected impact, and one caveat. "
-        "Keep it under 250 words. The data is synthetic and samples are small, so say what you "
-        "would validate on real data.\n\n" + json.dumps(facts))
+        "Write for a non-specialist: plain language, no jargon such as penetration or leakage; "
+        "say competitor brands and items bought. Keep it under 250 words. The data is synthetic "
+        "and samples are small, so say what you would validate on real data.\n\n" + json.dumps(facts))
     config = types.GenerateContentConfig(
         thinking_config=types.ThinkingConfig(thinking_level="low"), max_output_tokens=4000)
     models = []
@@ -201,11 +208,14 @@ def long_date(ts):
 def style(fig, height=360):
     fig.update_layout(
         height=height, margin=dict(l=0, r=12, t=8, b=0),
-        font=dict(family="Public Sans, system-ui, sans-serif", size=13, color=MUTED),
+        font=dict(family="Public Sans, system-ui, sans-serif", size=14, color=INK),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", y=1.1, x=0, title_text=""))
-    fig.update_xaxes(gridcolor=LINE, zeroline=False, linecolor=LINE)
-    fig.update_yaxes(gridcolor=LINE, zeroline=False, linecolor=LINE)
+        legend=dict(orientation="h", y=1.1, x=0, title_text="",
+                    font=dict(color=INK, size=14)))
+    axis = dict(gridcolor=LINE, zeroline=False, linecolor="#9A978C", automargin=True,
+                tickfont=dict(color=INK, size=14), title_font=dict(color=INK, size=14))
+    fig.update_xaxes(**axis)
+    fig.update_yaxes(**axis)
     return fig
 
 
@@ -228,10 +238,10 @@ def stacked_share(d, cat_col, pg_col, hover_extra=None, hover_label="", zero_lab
                       + (f"<br>%{{customdata:.0f}}% {hover_label}" if hover_extra else "")
                       + "<extra></extra>")
     fig.add_bar(
-        y=d[cat_col], x=other, orientation="h", name="Other brands", marker_color=GREY,
+        y=d[cat_col], x=other, orientation="h", name="Competitor brands", marker_color=GREY,
         text=[zero_label if v == 0 else ("" if v >= 100 else f"{100 - v:.0f}%") for v in pg],
         textposition="inside", insidetextanchor="middle", textfont=dict(color=INK),
-        hovertemplate="%{y}: other brands hold %{x:.1f}% of spend<extra></extra>")
+        hovertemplate="%{y}: competitor brands hold %{x:.1f}% of spend<extra></extra>")
     fig.update_layout(barmode="stack", bargap=0.35, legend=dict(traceorder="normal"))
     fig.update_xaxes(range=[0, 100], ticksuffix="%", showgrid=False)
     fig.update_yaxes(showgrid=False)
@@ -269,6 +279,13 @@ promo_pct = 100 * cats["promotion"].notna().mean()
 households = df["consumer_id"].nunique()
 receipts = df["receipt_id"].nunique()
 
+with st.sidebar.expander("What the terms mean"):
+    st.markdown(
+        "**Share of spend:** out of every £100 spent in a category, the part that goes to P&G.\n\n"
+        "**Bought on promotion:** the receipt shows a promotion label, such as a loyalty-card price.\n\n"
+        "**Repeat purchase:** a household buying in the same category again.\n\n"
+        "**Switching to a competitor:** the household's next purchase in that category was not a P&G brand.\n\n"
+        "**Items:** individual product lines on receipts.")
 st.sidebar.markdown(
     f"**{receipts:,}** receipts  \n**{households}** households  \n"
     f"{long_date(df['ts'].min())} to {long_date(df['ts'].max())}")
@@ -276,34 +293,38 @@ st.sidebar.markdown(
 # ---------- headline ----------
 worst = lk.iloc[0] if not lk.empty else None
 zero_cats = pen.loc[pen["pg_households"] == 0, "category"].str.lower().tolist()
-headline = f"P&G earns {pg_share:.0f}% of this basket."
+headline = f"P&G brands take {pg_share:.0f}% of home and personal care spend."
+finding = ""
 if worst is not None:
-    headline += (f" {pretty(worst['brand'])} loses {worst['lost_to_rival_pct']:.0f}% of its "
-                 f"repeat buyers to rival brands.")
+    finding = (f"After buying {pretty(worst['brand'])}, shoppers pick a competitor brand "
+               f"{worst['lost_to_rival_pct']:.0f}% of the time for their next "
+               f"{worst['category'].lower()}. ")
 sub = (f"{households} households, {receipts:,} receipts, {long_date(df['ts'].min())} to "
        f"{long_date(df['ts'].max())}. Synthetic data.")
 if zero_cats:
-    sub += " No P&G brand appears in " + ", ".join(zero_cats) + "."
+    sub += " No household bought a P&G brand in " + ", ".join(zero_cats) + "."
+sub = f"<strong>{finding}</strong>" + sub if finding else sub
 st.markdown(f'<div class="hero"><h1>{headline}</h1><p>{sub}</p></div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="stats">'
     + stat(f"{pg_share:.0f}%", "of home and personal care spend goes to P&G brands")
-    + stat(f"{promo_pct:.0f}%", "of lines were bought on a promotion")
-    + stat(f"{len(zero_cats)} of {len(pen)}", "categories have no P&G brand on the shelf")
+    + stat(f"{promo_pct:.0f}%", "of items were bought on promotion")
+    + stat(f"{len(zero_cats)} of {len(pen)}", "categories where no household bought a P&G brand")
     + "</div>", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Leaks and gaps", "Households", "Recommendations"])
+tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Switching and pairs", "Households", "Recommendations"])
 
 # ---------- overview ----------
 with tab1:
-    st.subheader("Where P&G holds the basket")
-    st.markdown('<p class="note">Share of spend in each category. Hover a bar to see how many '
-                'households buy a P&G brand there.</p>', unsafe_allow_html=True)
+    st.subheader("P&G's share of spend in each category")
+    st.markdown('<p class="note">Out of every £100 spent in a category, how much goes to P&G '
+                'brands and how much to competitors. Hover a bar to see what share of households '
+                'bought a P&G brand there.</p>', unsafe_allow_html=True)
     st.plotly_chart(style(stacked_share(pen, "category", "pg_revenue_share_pct",
-                                        "pg_household_pct", "of households buy P&G"), 390),
-                    width="stretch")
+                                        "pg_household_pct", "of households bought a P&G brand"), 390),
+                    width="stretch", config={"displayModeBar": False}, theme=None)
 
-    st.subheader("P&G share over time")
+    st.subheader("P&G's share of spend, week by week")
     wk = load_weekly()
     c1, c2 = st.columns(2)
     cat_pick = c1.selectbox("Category", ["All categories"] + sorted(wk["category"].unique()))
@@ -319,9 +340,12 @@ with tab1:
                                line=dict(color=CLAY, width=2.5), marker=dict(size=6),
                                hovertemplate="%{x|%d %b}: %{y:.1f}%<extra></extra>"))
     fig.update_yaxes(range=[0, 100], ticksuffix="%")
-    st.plotly_chart(style(fig, 300), width="stretch")
+    st.plotly_chart(style(fig, 300), width="stretch", config={"displayModeBar": False}, theme=None)
 
-    st.subheader("Promotion against rivals")
+    st.subheader("How often each brand is bought on promotion")
+    st.markdown('<p class="note">Each row compares a P&G brand with the competitor brands in the '
+                'same category. The further right a dot sits, the larger the share of its items '
+                'that were bought on promotion.</p>', unsafe_allow_html=True)
     d = bt[bt["is_pg"] & bt["competitor_promo_pct"].notna()].copy()
     d["label"] = d["brand"].map(pretty) + " in " + d["category"].str.lower()
     d["gap"] = d["promo_pct"] - d["competitor_promo_pct"]
@@ -331,31 +355,34 @@ with tab1:
         fig.add_scatter(x=[r["competitor_promo_pct"], r["promo_pct"]], y=[r["label"]] * 2,
                         mode="lines", line=dict(color=LINE, width=3), showlegend=False,
                         hoverinfo="skip")
-    fig.add_scatter(x=d["competitor_promo_pct"], y=d["label"], mode="markers", name="Rival brands",
+    fig.add_scatter(x=d["competitor_promo_pct"], y=d["label"], mode="markers", name="Competitor brands",
                     marker=dict(color=GREY, size=12),
-                    hovertemplate="Rivals: %{x:.1f}% of lines on promotion<extra></extra>")
+                    hovertemplate="Competitors: %{x:.1f}% of items bought on promotion<extra></extra>")
     fig.add_scatter(x=d["promo_pct"], y=d["label"], mode="markers", name="P&G brand",
                     marker=dict(color=CLAY, size=12),
-                    hovertemplate="P&G: %{x:.1f}% of lines on promotion<extra></extra>")
-    fig.update_xaxes(ticksuffix="%", title_text="Share of lines bought on promotion")
+                    hovertemplate="P&G: %{x:.1f}% of items bought on promotion<extra></extra>")
+    fig.update_xaxes(ticksuffix="%", title_text="Share of items bought on promotion", title_standoff=14)
     fig.update_yaxes(showgrid=False)
-    st.plotly_chart(style(fig, 360), width="stretch")
+    st.plotly_chart(style(fig, 360), width="stretch", config={"displayModeBar": False}, theme=None)
     if not d.empty:
         hi, lo = d.iloc[-1], d.iloc[0]
         st.markdown(
-            f'<p class="note">{pretty(hi["brand"])} is on promotion {hi["promo_pct"]:.1f}% of the '
-            f'time against {hi["competitor_promo_pct"]:.1f}% for rivals, and holds '
-            f'{hi["lines_share_in_category_pct"]:.0f}% of its category\'s lines. '
-            f'{pretty(lo["brand"])} in {lo["category"].lower()} is promoted '
-            f'{lo["promo_pct"]:.1f}% of the time against {lo["competitor_promo_pct"]:.1f}%, '
-            f'and holds {lo["lines_share_in_category_pct"]:.0f}%.</p>', unsafe_allow_html=True)
+            f'<p class="note">{pretty(hi["brand"])} is bought on promotion {hi["promo_pct"]:.1f}% '
+            f'of the time, against {hi["competitor_promo_pct"]:.1f}% for competitor '
+            f'{hi["category"].lower()} brands, and makes up '
+            f'{hi["lines_share_in_category_pct"]:.0f}% of the items bought in its category. '
+            f'{pretty(lo["brand"])} is bought on promotion {lo["promo_pct"]:.1f}% of the time, '
+            f'against {lo["competitor_promo_pct"]:.1f}% for competitor {lo["category"].lower()} '
+            f'brands, and makes up {lo["lines_share_in_category_pct"]:.0f}% of its category.</p>',
+            unsafe_allow_html=True)
 
-# ---------- leaks and gaps ----------
+# ---------- switching and pairs ----------
 with tab2:
-    st.subheader("Repeat buyers lost to rival brands")
-    st.markdown('<p class="note">For each P&G brand: how often a household\'s next purchase in the '
-                'same category was a rival brand. Samples are small, so read this as direction.'
-                '</p>', unsafe_allow_html=True)
+    st.subheader("Shoppers who switch to a competitor")
+    st.markdown('<p class="note">After a household buys a P&G brand, how often is its next '
+                'purchase in the same category a competitor brand instead? Moving between two P&G '
+                'brands does not count. Some brands have few repeat purchases, so treat these as '
+                'a guide, not an exact figure.</p>', unsafe_allow_html=True)
     if lk.empty:
         st.info("Not enough repeat purchases yet.")
     else:
@@ -363,21 +390,21 @@ with tab2:
         labels = l["brand"].map(pretty) + " in " + l["category"].str.lower()
         fig = go.Figure(go.Bar(
             x=l["lost_to_rival_pct"], y=labels, orientation="h", marker_color=RUST,
-            text=[f"{p:.0f}% of {n}" for p, n in zip(l["lost_to_rival_pct"], l["repeat_purchases"])],
+            text=[f"{p:.0f}% of {n} repeat purchases" for p, n in
+                  zip(l["lost_to_rival_pct"], l["repeat_purchases"])],
             textposition="outside", cliponaxis=False,
-            hovertemplate="%{y}: %{x:.1f}% lost<extra></extra>"))
+            hovertemplate="%{y}: next purchase was a competitor %{x:.1f}% of the time<extra></extra>"))
         fig.update_xaxes(ticksuffix="%", showgrid=False,
-                         range=[0, max(25, l["lost_to_rival_pct"].max() * 1.5)])
+                         range=[0, max(30, l["lost_to_rival_pct"].max() * 2.2)])
         fig.update_yaxes(showgrid=False)
-        st.plotly_chart(style(fig, 340), width="stretch")
-        st.caption("Labels show the share lost, out of the number of repeat purchases.")
+        st.plotly_chart(style(fig, 340), width="stretch", config={"displayModeBar": False}, theme=None)
 
-    st.subheader("Households that stop at one brand")
+    st.subheader("Households that buy one brand but not the other")
     for a, b in metrics.CROSS_SELL_PAIRS:
         g = metrics.cross_sell_gap(df, a, b)
         st.markdown(
             f'<div class="gap"><b>{g["of_which_never_buy_b"]} of {g["households_buying_a"]}</b> '
-            f'{pretty(a)} households ({g["pct"]:.0f}%) never buy {pretty(b)}.</div>',
+            f'households that buy {pretty(a)} ({g["pct"]:.0f}%) have never bought {pretty(b)}.</div>',
             unsafe_allow_html=True)
 
     st.subheader("P&G share of spend by store")
@@ -388,7 +415,7 @@ with tab2:
         cliponaxis=False, hovertemplate="%{y}: %{x:.1f}%<extra></extra>"))
     fig.update_xaxes(range=[0, 100], ticksuffix="%", showgrid=False)
     fig.update_yaxes(showgrid=False)
-    st.plotly_chart(style(fig, 230), width="stretch")
+    st.plotly_chart(style(fig, 230), width="stretch", config={"displayModeBar": False}, theme=None)
 
 # ---------- households ----------
 with tab3:
@@ -399,9 +426,9 @@ with tab3:
         '<div class="stats">'
         + stat(str(h["receipt_id"].nunique()), "receipts in the period")
         + stat(f"£{h['line_total'].sum():,.2f}", "total spend")
-        + stat(f"{100 * h['promotion'].notna().mean():.0f}%", "of lines on promotion")
+        + stat(f"{100 * h['promotion'].notna().mean():.0f}%", "of items bought on promotion")
         + "</div>", unsafe_allow_html=True)
-    st.subheader("Home and personal care spend")
+    st.subheader("This household's spend by category")
     by = hc.groupby("category").apply(
         lambda g: pd.Series({"spend": g["line_total"].sum(),
                              "pg": 100 * g.loc[g["is_pg"], "line_total"].sum() / g["line_total"].sum()}),
@@ -410,8 +437,8 @@ with tab3:
         st.info("No home or personal care purchases for this household.")
     else:
         fig = stacked_share(by, "category", "pg", zero_label="no P&G purchase")
-        st.plotly_chart(style(fig, 330), width="stretch")
-        st.caption("Each bar is the household's spend in that category, split into P&G and other brands.")
+        st.plotly_chart(style(fig, 330), width="stretch", config={"displayModeBar": False}, theme=None)
+        st.caption("Each bar is the household's spend in that category, split into P&G and competitor brands.")
     top = h["product"].value_counts().head(5).index.str.title().tolist()
     st.markdown(f'<p class="note">Most bought: {", ".join(top)}.</p>', unsafe_allow_html=True)
 

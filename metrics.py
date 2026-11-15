@@ -96,6 +96,17 @@ def summary(df):
                              "avg_unit_price", "promo_pct", "competitor_promo_pct"]]
     return {
         "data_note": "Synthetic receipts. Small samples: treat results as directional.",
+        "glossary": {
+            "lines": "items bought",
+            "pg_household_pct": "percent of households that bought a P&G brand in this category",
+            "pg_revenue_share_pct": "percent of spend in this category that goes to P&G brands",
+            "promo_pct": "percent of this brand's items bought on promotion",
+            "competitor_promo_pct": "percent of competitor items in the category bought on promotion",
+            "lost_to_rival_pct": "percent of repeat purchases of this P&G brand where the next "
+                                 "purchase in the category was a competitor brand",
+            "switched_pct": "same, but also counting moves to another P&G brand",
+            "cross_sell_gaps": "households that buy brand A but have never bought brand B",
+        },
         "receipts": int(df["receipt_id"].nunique()),
         "households": int(df["consumer_id"].nunique()),
         "date_range": [str(df["ts"].min().date()), str(df["ts"].max().date())],

@@ -2,7 +2,7 @@
 
 Built for DurHack, P&G Challenge 1: innovating with complex receipt data for consumer and business insights.
 
-Supermarket receipts are messy: truncated product names, OCR errors, missing context. This project cleans them, stores them in TigerData, and turns them into actions a P&G category team could take with Gemini API. A new CSV can be dropped into the dashboard to update every chart, and Gemini turns the computed numbers into three prioritised recommendations.
+Supermarket receipts are messy: truncated product names, OCR errors, missing context. This project cleans them, stores them in TigerData, and turns them into actions a P&G category team could take. A new CSV dropped into the dashboard updates every chart, and Gemini turns the computed numbers into three prioritised recommendations.
 
 ## What it does
 
@@ -11,9 +11,9 @@ Supermarket receipts are messy: truncated product names, OCR errors, missing con
 - **Stores receipts in TigerData** (Postgres with TimescaleDB), with a continuous aggregate for weekly P&G share by store and category.
 - **Shows where P&G wins and leaks:**
   - share of spend in each category, and where P&G has no brand at all;
-  - promotion intensity against rival brands;
-  - repeat buyers lost to rival brands, per P&G brand;
-  - cross-sell gaps, such as households that buy Ariel but never Lenor;
+  - how often each P&G brand is bought on promotion compared with competitor brands;
+  - how often shoppers switch to a competitor brand after buying each P&G brand;
+  - households that buy one P&G brand but have never bought its pair, such as Ariel without Lenor;
   - P&G share by store, and a single-household view.
 - **Recommends actions.** Only the computed numbers (never the raw receipts) go to Gemini, which returns three prioritised actions with the evidence quoted. The exact numbers sent are shown in the app so anyone can check them.
 - **Updates live.** Upload a new CSV in the sidebar. The app adds only receipts it has not seen, cleans them, and refreshes the weekly view.
@@ -28,10 +28,10 @@ Python, pandas, Streamlit, Plotly, TigerData, Gemini API (`google-genai`).
 |---|---|
 | `app.py` | Streamlit dashboard, CSV upload and Gemini recommendations |
 | `cleaning.py` | Product-name cleaning, brand and category tagging |
-| `metrics.py` | All insight calculations (share, promotion, leakage, cross-sell) |
+| `metrics.py` | All insight calculations (share of spend, promotion, switching, brand pairs) |
 | `load.py` | One-off load from the raw uploaded table into `receipts` |
-| `make_synthetic.py` | Generates a new batch of synthetic receipts in the same format |
 | `.env.example` | The settings the app needs (copy to `.env`) |
+| `.streamlit/config.toml` | Forces the light colour theme so charts and widgets look the same on every computer |
 
 ## Setup
 
@@ -87,24 +87,27 @@ Python, pandas, Streamlit, Plotly, TigerData, Gemini API (`google-genai`).
    python load.py
    ```
 
-   It should print `products: 99 | P&G lines: 2243` for the sample data.
+   It should print `products: 99 | P&G lines: 2243 | lines on promotion: 6389` for the sample data.
 
 6. **Run the dashboard:**
 
    ```
-   python -m streamlit run app_v2.py
+   python -m streamlit run app.py
    ```
 
 ## Running without a database
 
 Set `CSV_MODE=1` in `.env` and keep the receipt CSV in the project folder (override the file name with `CSV_FILE`). The dashboard then reads the CSV directly. Uploads and the weekly view refresh are switched off in this mode. It is useful as a demo fallback.
 
+## Try the live update
+
+Upload a CSV with the same columns as the original data in the dashboard sidebar and click **Process upload**. New receipts are added, receipts already loaded are skipped, and the charts update. The repo includes two extra synthetic batches to try, `synthetic_receipts_october.csv` and `synthetic_receipts_november.csv`.
 
 ## How the numbers are defined
 
-- **Lost to rival brands:** of a household's repeat purchases of a P&G brand in a category, the share where the next purchase was a brand that is not P&G. A move from one P&G brand to another does not count as lost.
-- **Promotion intensity:** the share of lines bought on a promotion, for a P&G brand against the other brands in its category.
-- **Cross-sell gap:** households that buy brand A but never brand B.
+- **Switching to a competitor:** after a household buys a P&G brand, the share of its next purchases in the same category that were a competitor brand. A move from one P&G brand to another does not count.
+- **Bought on promotion:** the share of items whose receipt line carries a promotion label, for a P&G brand against the competitor brands in its category.
+- **Households that buy one brand but not the other:** households that buy brand A but have never bought brand B.
 
 ## Data and privacy
 

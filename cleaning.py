@@ -62,6 +62,15 @@ def category(p):
     return "Other"
 
 
+NO_PROMO = {"none", "nan", "null", "n/a", ""}
+
+
+def clean_promotion(series):
+    """Receipts store 'None' (text) when there was no promotion. Turn those into real missing values."""
+    return series.map(lambda v: None if v is None or pd.isna(v) or str(v).strip().lower() in NO_PROMO
+                      else str(v).strip())
+
+
 REQUIRED = ["Consumer_ID", "Receipt_ID", "Store_Name", "Date", "Time", "Product_Name",
             "Quantity", "Unit_Price", "Line_Total", "Promotion", "Total_Spend", "Line_Number"]
 
@@ -87,7 +96,7 @@ def clean_frame(raw, extra_names=()):
         "quantity": raw["Quantity"],
         "unit_price": raw["Unit_Price"],
         "line_total": raw["Line_Total"],
-        "promotion": raw["Promotion"],
+        "promotion": clean_promotion(raw["Promotion"]),
         "total_spend": raw["Total_Spend"],
     })
     out["brand"] = out["product"].map(brand)
