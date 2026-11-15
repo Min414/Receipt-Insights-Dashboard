@@ -12,6 +12,15 @@ from cleaning import clean_frame, clean_promotion
 load_dotenv(override=True)
 st.set_page_config(page_title="Receipt insights for P&G", layout="wide")
 
+# On Streamlit Cloud, settings live in the app's Secrets. Copy any that are set there into the
+# environment, so the rest of the code can keep reading them the same way as from .env.
+try:
+    for _key in ("DATABASE_URL", "GEMINI_API_KEY", "GEMINI_MODEL", "CSV_MODE", "CSV_FILE"):
+        if _key in st.secrets and not os.environ.get(_key):
+            os.environ[_key] = str(st.secrets[_key])
+except Exception:
+    pass  # no secrets configured (for example when running locally with a .env file)
+
 # Set CSV_MODE=1 in .env to run from the local CSV (no database). Useful as a demo fallback.
 CSV_MODE = os.getenv("CSV_MODE") == "1"
 CSV_FILE = os.getenv("CSV_FILE", "DH_Synthtic_Receipt_Database.csv")
@@ -167,6 +176,8 @@ def ingest(file):
 def ask_gemini(facts):
     from google import genai
     from google.genai import types
+    if not os.environ.get("GEMINI_API_KEY"):
+        raise RuntimeError("GEMINI_API_KEY is not set. Add it to your .env file or the app's Secrets.")
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                           http_options=types.HttpOptions(timeout=30_000))
     prompt = (
@@ -265,6 +276,11 @@ else:
         st.sidebar.info(st.session_state["msg"])
 
 # ---------- data ----------
+if not CSV_MODE and not os.environ.get("DATABASE_URL"):
+    st.error("DATABASE_URL is not set, so the app cannot reach the database. On Streamlit Cloud: open "
+             "the app's Settings, then Secrets, and add a line like  DATABASE_URL = \"postgres://...\"  "
+             "(keep the quotes), save, then reboot the app. Locally, put it in your .env file.")
+    st.stop()
 df = load_receipts()
 if df.empty:
     st.warning("The receipts table is empty. Run load.py first.")

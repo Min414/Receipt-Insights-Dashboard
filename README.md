@@ -95,6 +95,23 @@ Python, pandas, Streamlit, Plotly, TigerData, Gemini API (`google-genai`).
    python -m streamlit run app.py
    ```
 
+## Deploying on Streamlit Community Cloud
+
+1. Push the repo to GitHub. It needs `app.py`, `cleaning.py`, `metrics.py`, `requirements.txt` and `.streamlit/config.toml`. Never commit `.env`.
+2. At share.streamlit.io choose **Create app**, pick the repo and the main file.
+3. Open **Advanced settings** and paste your secrets in TOML format. Keep the quotes:
+
+   ```
+   DATABASE_URL = "postgres://USER:PASSWORD@HOST:PORT/DBNAME?sslmode=require"
+   GEMINI_API_KEY = "your-key"
+   GEMINI_MODEL = "gemini-3.5-flash-lite"
+   ```
+
+   The app copies these into its environment, so it reads them the same way as a local `.env`. To run without any database credentials in the cloud, use `CSV_MODE = "1"` and include the CSV in the repo.
+4. After changing secrets later, reboot the app from its menu.
+
+A public link lets anyone use the upload button and the recommendations button, so for a public demo prefer `CSV_MODE`, or a read-only database user with uploads switched off.
+
 ## Running without a database
 
 Set `CSV_MODE=1` in `.env` and keep the receipt CSV in the project folder (override the file name with `CSV_FILE`). The dashboard then reads the CSV directly. Uploads and the weekly view refresh are switched off in this mode. It is useful as a demo fallback.
@@ -119,4 +136,5 @@ Upload a CSV with the same columns as the original data in the dashboard sidebar
 
 - The data is synthetic and the samples behind some metrics are small (100 to 200 repeat purchases per brand), so treat results as directional and validate them on real receipts.
 - Name cleaning is rule-based and tuned to this dataset. Unrecognised new product names are listed after an upload so they can be reviewed.
+- Uploads only add new receipts. A receipt that is already stored is never changed, even if a later file has different values for it. To correct stored data, fix the rows in TigerData directly.
 - Gemini model names change often. If a call fails, set `GEMINI_MODEL` in `.env` to a current model name.
