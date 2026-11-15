@@ -2,6 +2,8 @@
 
 Built for DurHack, P&G Challenge 1: innovating with complex receipt data for consumer and business insights.
 
+[Click here for demo](https://receipt-insights-dashboard-dk5reusfl3s4mojzkbxa7n.streamlit.app/)
+
 Supermarket receipts are messy: truncated product names, OCR errors, missing context. This project cleans them, stores them in TigerData, and turns them into actions a P&G category team could take. A new CSV dropped into the dashboard updates every chart, and Gemini turns the computed numbers into three prioritised recommendations.
 
 ## What it does
